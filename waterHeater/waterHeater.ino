@@ -27,8 +27,8 @@ const char* mqttPwd = STAMqttPwd;
 const char* mqttClientID = STAMqttClientID;
 const int stepsPerRevolution = 2048;
 const int ldr = A0;
-bool prevThermostat;
-bool relayState=false;
+bool prevThermostat = false;
+bool relayState = false;
 bool thermostat = false;
 float prevTemp;
 String strTopic;
@@ -63,9 +63,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       case 1:
         Serial.println("Relay ON");
         digitalWrite(relay, HIGH);
-        digitalWrite(thBLED, HIGH);
+        digitalWrite(thGLED, HIGH);
         relayState=true;
-        client.publish("stat/waterHeater/power", "on"); 
+        client.publish("stat/waterHeater/power", "1"); 
       break;
       case 2:
         Serial.println("Relay OFF");
@@ -74,7 +74,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         digitalWrite(thGLED, LOW);
         digitalWrite(thBLED, LOW);
         relayState=false;
-        client.publish("stat/waterHeater/power", "off");
+        client.publish("stat/waterHeater/power", "2");  
+        client.publish("stat/waterHeater/thermostat", "off");  
+        thermostat = false;
+        prevThermostat = false;
       break;
     }
   }
@@ -94,6 +97,8 @@ void mqttReconnect() {
       client.subscribe("stat/waterHeater/sensor");
       client.subscribe("stat/waterHeater/power");
       client.publish("avail/waterHeater", "Online");
+      client.publish("stat/waterHeater/power", "off");
+      client.publish("stat/waterHeater/thermostat", "off");  
     } else {
       Serial.print("Failed: ");
       Serial.print(client.state());
@@ -104,44 +109,46 @@ void mqttReconnect() {
 }
 
 void rgbThermostat(float temp){
-  digitalWrite(thBLED, LOW);
+  digitalWrite(thGLED, LOW);
   if (temp <= 10){
     analogWrite(thRLED, 0);
-    analogWrite(thGLED, 255);
+    analogWrite(thBLED, 255);
   }
   if (temp <= 20 && temp >=10){
     analogWrite(thRLED, 150);
-    analogWrite(thGLED, 255);
+    analogWrite(thBLED, 255);
   }
   if (temp <= 30 && temp >=20){
     analogWrite(thRLED, 255);
-    analogWrite(thGLED, 255);
+    analogWrite(thBLED, 255);
   }
   if (temp <= 40 && temp >=30){
     analogWrite(thRLED, 255);
-    analogWrite(thGLED, 150);
+    analogWrite(thBLED, 150);
   }
   if (temp <= 50 && temp >=40){
     analogWrite(thRLED, 255);
-    analogWrite(thGLED, 80);
+    analogWrite(thBLED, 80);
   }
    if (temp > 50){
     analogWrite(thRLED, 255);
-    analogWrite(thGLED, 0);
+    analogWrite(thBLED, 0);
   }
 }
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
+  pinMode(boardLed, OUTPUT);
   pinMode(relay, OUTPUT);
   pinMode(thRLED, OUTPUT);
   pinMode(thGLED, OUTPUT);
   pinMode(thBLED, OUTPUT);
+  digitalWrite(boardLed, HIGH);
   digitalWrite(relay, LOW);
   digitalWrite(thRLED, LOW);
-  digitalWrite(thGLED, LOW);
-  digitalWrite(thBLED, HIGH);
+  digitalWrite(thGLED, HIGH);
+  digitalWrite(thBLED, LOW);
   pinMode(ldr, INPUT);
   dht.begin();
   
@@ -166,6 +173,7 @@ void loop() {
   portal.handleClient(); 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
+    client.publish("avail/waterHeater", "Online");
     previousMillis = currentMillis;
     float temp = dht.readTemperature();
     int ldrStatus = analogRead(ldr);
@@ -174,37 +182,38 @@ void loop() {
       Serial.printf("Temp: %.2f \n", temp, "°C"); 
       prevTemp = temp;
     }
-    
-    if (ldrStatus > 300){
-      thermostat = true;
-    } else{
-      thermostat = false;
-    }
 
-    if (prevThermostat != thermostat){
+    if (relayState){
+      if (ldrStatus > 300){
+        thermostat = true;
+      } else{
+        thermostat = false;
+      }
+
+      if (prevThermostat != thermostat){
+        if (thermostat){
+          Serial.println("Thermostat ON");
+          client.publish("stat/waterHeater/thermostat", "on");  
+          prevThermostat = thermostat;
+        } else {
+          Serial.println("Thermostat OFF");
+          client.publish("stat/waterHeater/thermostat", "off");    
+          prevThermostat = thermostat;
+        }
+      }
+
       if (thermostat){
-        Serial.println("Thermostat ON");
-        client.publish("stat/waterHeater/thermostat", "on");  
-        prevThermostat = thermostat;
+        rgbThermostat(temp);
+      } else if (relayState) {
+        digitalWrite(thRLED, LOW);
+        digitalWrite(thGLED, HIGH);
+        digitalWrite(thBLED, LOW);
       } else {
-        Serial.println("Thermostat OFF");
-        client.publish("stat/waterHeater/thermostat", "off");    
-        prevThermostat = thermostat;
+        digitalWrite(thRLED, LOW);
+        digitalWrite(thGLED, LOW);
+        digitalWrite(thBLED, LOW);
       }
     }
-
-    if (thermostat && relayState){
-      rgbThermostat(temp);
-    } else if (relayState) {
-      digitalWrite(thRLED, LOW);
-      digitalWrite(thGLED, LOW);
-      digitalWrite(thBLED, HIGH);
-    } else {
-      digitalWrite(thRLED, LOW);
-      digitalWrite(thGLED, LOW);
-      digitalWrite(thBLED, LOW);
-    }
-    
     Serial.printf("Thermostat value: %d \n", ldrStatus);                       
   }
 }
