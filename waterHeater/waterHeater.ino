@@ -7,9 +7,12 @@
 #include <ESP8266WiFi.h>
 
 //DEFINITIONS
-#define boardLed 2 //D4
-#define relay 5 //D1
-#define dht11 4 //D2
+#define boardLed 2        //D4
+#define relay 5           //D1
+#define dht11 4           //D2
+#define thRLED 14         //D5
+#define thGLED 12         //D6
+#define thBLED 13         //D7
 #define DHTTYPE DHT11
 #ifndef STASSID
 #define STAMqttServerAddress ""
@@ -25,6 +28,7 @@ const char* mqttClientID = STAMqttClientID;
 const int stepsPerRevolution = 2048;
 const int ldr = A0;
 bool prevThermostat;
+bool relayState=false;
 bool thermostat = false;
 float prevTemp;
 String strTopic;
@@ -59,12 +63,18 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       case 1:
         Serial.println("Relay ON");
         digitalWrite(relay, HIGH);
+        digitalWrite(thBLED, HIGH);
+        relayState=true;
         client.publish("stat/waterHeater/power", "on"); 
       break;
       case 2:
         Serial.println("Relay OFF");
         digitalWrite(relay, LOW);
-        client.publish("stat/waterHeater/power", "off"); 
+        digitalWrite(thRLED, LOW);
+        digitalWrite(thGLED, LOW);
+        digitalWrite(thBLED, LOW);
+        relayState=false;
+        client.publish("stat/waterHeater/power", "off");
       break;
     }
   }
@@ -93,11 +103,45 @@ void mqttReconnect() {
   }
 }
 
+void rgbThermostat(float temp){
+  digitalWrite(thBLED, LOW);
+  if (temp <= 10){
+    analogWrite(thRLED, 0);
+    analogWrite(thGLED, 255);
+  }
+  if (temp <= 20 && temp >=10){
+    analogWrite(thRLED, 150);
+    analogWrite(thGLED, 255);
+  }
+  if (temp <= 30 && temp >=20){
+    analogWrite(thRLED, 255);
+    analogWrite(thGLED, 255);
+  }
+  if (temp <= 40 && temp >=30){
+    analogWrite(thRLED, 255);
+    analogWrite(thGLED, 150);
+  }
+  if (temp <= 50 && temp >=40){
+    analogWrite(thRLED, 255);
+    analogWrite(thGLED, 80);
+  }
+   if (temp > 50){
+    analogWrite(thRLED, 255);
+    analogWrite(thGLED, 0);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
   pinMode(relay, OUTPUT);
+  pinMode(thRLED, OUTPUT);
+  pinMode(thGLED, OUTPUT);
+  pinMode(thBLED, OUTPUT);
   digitalWrite(relay, LOW);
+  digitalWrite(thRLED, LOW);
+  digitalWrite(thGLED, LOW);
+  digitalWrite(thBLED, HIGH);
   pinMode(ldr, INPUT);
   dht.begin();
   
@@ -143,11 +187,24 @@ void loop() {
         client.publish("stat/waterHeater/thermostat", "on");  
         prevThermostat = thermostat;
       } else {
-       Serial.println("Thermostat OFF");
+        Serial.println("Thermostat OFF");
         client.publish("stat/waterHeater/thermostat", "off");    
         prevThermostat = thermostat;
       }
     }
+
+    if (thermostat && relayState){
+      rgbThermostat(temp);
+    } else if (relayState) {
+      digitalWrite(thRLED, LOW);
+      digitalWrite(thGLED, LOW);
+      digitalWrite(thBLED, HIGH);
+    } else {
+      digitalWrite(thRLED, LOW);
+      digitalWrite(thGLED, LOW);
+      digitalWrite(thBLED, LOW);
+    }
+    
     Serial.printf("Thermostat value: %d \n", ldrStatus);                       
   }
 }
