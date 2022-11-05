@@ -14,12 +14,10 @@
 #define thGLED 12         //D6
 #define thBLED 13         //D7
 #define DHTTYPE DHT11
-#ifndef STASSID
 #define STAMqttServerAddress ""
 #define STAMqttUserName ""
 #define STAMqttPwd ""
 #define STAMqttClientID  "WaterHeater"
-#endif
 
 const char* mqttServerAddress = STAMqttServerAddress;
 const char* mqttUserName = STAMqttUserName;
@@ -61,14 +59,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   if (strTopic == "cmnd/waterHeater/power") {
     switch(atoi((char*)payload)){
       case 1:
-        Serial.println("Relay ON");
         digitalWrite(relay, HIGH);
         digitalWrite(thGLED, HIGH);
         relayState=true;
         client.publish("stat/waterHeater/power", "1"); 
       break;
       case 2:
-        Serial.println("Relay OFF");
         digitalWrite(relay, LOW);
         digitalWrite(thRLED, LOW);
         digitalWrite(thGLED, LOW);
@@ -86,10 +82,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 //MQTT RECONNECT
 void mqttReconnect() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
     if (client.connect(mqttClientID, mqttUserName, mqttPwd)) {
-      Serial.println("Connected to Home Assistant MQTT Broker");
-      //MQTT SUBSCRIPTIONS
       client.subscribe("avail/waterHeater");
       client.subscribe("cmnd/waterHeater/temp");
       client.subscribe("cmnd/waterHeater/thermostat");
@@ -100,9 +93,6 @@ void mqttReconnect() {
       client.publish("stat/waterHeater/power", "off");
       client.publish("stat/waterHeater/thermostat", "off");  
     } else {
-      Serial.print("Failed: ");
-      Serial.print(client.state());
-      Serial.println("Trying again in 5 seconds...");
       delay(5000);
     }
   }
@@ -137,8 +127,6 @@ void rgbThermostat(float temp){
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting");
   pinMode(boardLed, OUTPUT);
   pinMode(relay, OUTPUT);
   pinMode(thRLED, OUTPUT);
@@ -151,7 +139,6 @@ void setup() {
   digitalWrite(thBLED, LOW);
   pinMode(ldr, INPUT);
   dht.begin();
-  
   client.setServer(mqttServerAddress, 1883);
   client.setCallback(mqttCallback);
   config.ota = AC_OTA_BUILTIN;      
@@ -159,10 +146,6 @@ void setup() {
   hello.load(HELLO_PAGE);         
   portal.join({ hello });           
   portal.begin();   
-
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP()); 
 }
 
 void loop() {
@@ -179,29 +162,22 @@ void loop() {
     int ldrStatus = analogRead(ldr);
     if (temp != prevTemp){
       client.publish("stat/waterHeater/sensor", String(temp).c_str());
-      Serial.printf("Temp: %.2f \n", temp, "°C"); 
       prevTemp = temp;
     }
-
     if (relayState){
       if (ldrStatus > 300){
         thermostat = true;
       } else{
         thermostat = false;
       }
-
       if (prevThermostat != thermostat){
         if (thermostat){
-          Serial.println("Thermostat ON");
           client.publish("stat/waterHeater/thermostat", "on");  
-          prevThermostat = thermostat;
         } else {
-          Serial.println("Thermostat OFF");
           client.publish("stat/waterHeater/thermostat", "off");    
-          prevThermostat = thermostat;
         }
+        prevThermostat = thermostat;
       }
-
       if (thermostat){
         rgbThermostat(temp);
       } else if (relayState) {
@@ -213,7 +189,6 @@ void loop() {
         digitalWrite(thGLED, LOW);
         digitalWrite(thBLED, LOW);
       }
-    }
-    Serial.printf("Thermostat value: %d \n", ldrStatus);                       
+    }                   
   }
 }
