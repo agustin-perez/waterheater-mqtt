@@ -90,8 +90,6 @@ void mqttReconnect() {
       client.subscribe("stat/waterHeater/sensor");
       client.subscribe("stat/waterHeater/power");
       client.publish("avail/waterHeater", "Online");
-      client.publish("stat/waterHeater/power", "off");
-      client.publish("stat/waterHeater/thermostat", "off");  
     } else {
       delay(5000);
     }
@@ -156,8 +154,8 @@ void loop() {
   portal.handleClient(); 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
-    client.publish("avail/waterHeater", "Online");
     previousMillis = currentMillis;
+    client.publish("avail/waterHeater", "Online");
     float temp = dht.readTemperature();
     int ldrStatus = analogRead(ldr);
     if (temp != prevTemp){
@@ -165,6 +163,7 @@ void loop() {
       prevTemp = temp;
     }
     if (relayState){
+      client.publish("stat/waterHeater/power", "1"); 
       if (ldrStatus > 300){
         thermostat = true;
       } else{
@@ -189,6 +188,8 @@ void loop() {
         digitalWrite(thGLED, LOW);
         digitalWrite(thBLED, LOW);
       }
+    } else {
+      client.publish("stat/waterHeater/power", "2"); 
     }                   
   }
 }
